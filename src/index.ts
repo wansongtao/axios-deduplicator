@@ -1,10 +1,17 @@
-import type { AxiosRequestConfig, AxiosResponse } from 'axios';
+import AxiosDeduplicator from './core/axios-deduplicator';
 
-class AxiosDeduplicator {
-  private static KEY = 'axios-deduplicator';
-  private static CODE = 'ECONNABORTED';
+import type { IOptions } from './types';
+
+export default function createAxiosDeduplicatorInstance(
+  options: Partial<IOptions> = {}
+) {
+  const instance = new AxiosDeduplicator(options);
+
+  return {
+    requestInterceptor: instance.requestInterceptor.bind(instance),
+    responseInterceptorFulfilled:
+      instance.responseInterceptorFulfilled.bind(instance),
+    responseInterceptorRejected:
+      instance.responseInterceptorRejected.bind(instance)
+  };
 }
-
-const t = new AxiosDeduplicator();
-console.log(t, 't');
-

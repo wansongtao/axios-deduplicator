@@ -8,7 +8,15 @@ export interface IOptions<
   V extends AxiosResponse = AxiosResponse
 > {
   timeout?: number;
+  repeatWindowMs: number;
   generateRequestKey: (config: T) => string;
   isAllowRepeat?: (config: T) => boolean;
-  deleteCurrentHistory?: (error?: U, res?: V) => boolean;
+  isCache(error: U): boolean;
+  isCache(error: undefined, res: V): boolean;
+  isCache?: (error?: U, res?: V) => boolean;
+}
+
+export interface ICachedResponse {
+  data?: AxiosResponse;
+  lastRequestTime: number;
 }

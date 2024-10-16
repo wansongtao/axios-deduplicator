@@ -6,20 +6,21 @@ import type {
   AxiosResponse,
   InternalAxiosRequestConfig
 } from 'axios';
-import type { ICallback, IOptions } from '../types';
+import type { ICallback, IOptions, ICachedResponse } from '../types';
 
 export default class AxiosDeduplicator {
   static CODE = 'ERR_REPEATED';
-  histories: Map<string, 1> = new Map();
+  histories: Map<string, ICachedResponse> = new Map();
   pendingQueue: Map<string, ICallback[]> = new Map();
   options: IOptions = {
+    repeatWindowMs: 0,
     generateRequestKey: AxiosDeduplicator.generateRequestKey
   };
 
   constructor(config: Partial<IOptions> = {}) {
     this.options.timeout = config.timeout;
     this.options.isAllowRepeat = config.isAllowRepeat;
-    this.options.deleteCurrentHistory = config.deleteCurrentHistory;
+    this.options.isCache = config.isCache;
 
     if (config.generateRequestKey) {
       this.options.generateRequestKey = config.generateRequestKey;
@@ -31,27 +32,39 @@ export default class AxiosDeduplicator {
     let key = `${method}-${url}`;
 
     try {
-      if (data && getDataType(data) === 'object') {
-        key += `-${JSON.stringify(data)}`;
-      } else if (getDataType(data) === 'formdata') {
-        for (const [k, v] of data.entries()) {
-          if (v instanceof Blob) {
-            continue;
+      switch (getDataType(data)) {
+        case 'object':
+          key += `-${JSON.stringify(data)}`;
+          break;
+        case 'formdata':
+          for (const [k, v] of data.entries()) {
+            if (v instanceof Blob) {
+              continue;
+            }
+            key += `-${k}-${v}`;
           }
-          key += `-${k}-${v}`;
-        }
+          break;
+        default:
+          break;
       }
 
-      if (params && getDataType(params) === 'object') {
+      if (getDataType(params) === 'object') {
         key += `-${JSON.stringify(params)}`;
       }
-
-      key = encodeURIComponent(key);
     } catch (e) {
       /* empty */
     }
 
     return key;
+  }
+
+  clearExpiredHistories() {
+    const now = Date.now();
+    for (const [key, { lastRequestTime }] of this.histories) {
+      if (now - lastRequestTime > this.options.repeatWindowMs!) {
+        this.histories.delete(key);
+      }
+    }
   }
 
   private on(key: string, callback: ICallback) {
@@ -64,10 +77,12 @@ export default class AxiosDeduplicator {
 
   private remove(key: string) {
     this.pendingQueue.delete(key);
-    this.histories.delete(key);
+    this.clearExpiredHistories();
   }
 
-  private emit(key: string, data?: AxiosResponse, error?: AxiosError) {
+  private emit(key: string, data: AxiosResponse): void;
+  private emit(key: string, data: undefined, error: AxiosError): void;
+  private emit(key: string, data?: AxiosResponse, error?: AxiosError): void {
     if (this.pendingQueue.has(key)) {
       for (const callback of this.pendingQueue.get(key)!) {
         callback(data, error);
@@ -91,8 +106,8 @@ export default class AxiosDeduplicator {
       }
 
       const callback = (data?: AxiosResponse, error?: AxiosError) => {
-        data ? resolve(data) : reject(error);
         timer && clearTimeout(timer);
+        data ? resolve(data) : reject(error);
       };
 
       this.on(key, callback);
@@ -104,31 +119,36 @@ export default class AxiosDeduplicator {
       ? this.options.isAllowRepeat(config)
       : false;
 
-    if (!isAllowRepeat) {
-      const key = this.options.generateRequestKey(config);
-
-      if (this.histories.has(key)) {
-        return Promise.reject({
-          code: AxiosDeduplicator.CODE,
-          message: 'Request repeated',
-          config
-        });
-      }
-
-      this.histories.set(key, 1);
+    if (isAllowRepeat) {
+      return config;
     }
 
+    const key = this.options.generateRequestKey(config);
+    if (this.histories.has(key)) {
+      return Promise.reject({
+        code: AxiosDeduplicator.CODE,
+        message: 'Request repeated',
+        config
+      });
+    }
+
+    this.histories.set(key, { lastRequestTime: Date.now() });
     return config;
   }
 
   responseInterceptorFulfilled(response: AxiosResponse) {
     const key = this.options.generateRequestKey(response.config);
     if (
-      this.options.deleteCurrentHistory &&
-      this.options.deleteCurrentHistory(undefined, response)
+      this.options.isCache &&
+      this.options.isCache(undefined, response)
     ) {
       this.remove(key);
       return response;
+    }
+
+    const history = this.histories.get(key);
+    if (history) {
+      history.data = response;
     }
 
     this.emit(key, response);
@@ -138,19 +158,27 @@ export default class AxiosDeduplicator {
   responseInterceptorRejected(error: AxiosError) {
     const key = this.options.generateRequestKey(error.config!);
     if (
-      this.options.deleteCurrentHistory &&
-      this.options.deleteCurrentHistory(error)
+      this.options.isCache &&
+      this.options.isCache(error)
     ) {
       this.remove(key);
       return Promise.reject(error);
     }
 
     if (error.code === AxiosDeduplicator.CODE) {
+      const history = this.histories.get(key);
+      if (
+        history &&
+        history.data &&
+        Date.now() - history.lastRequestTime < this.options.repeatWindowMs
+      ) {
+        return Promise.resolve(history.data);
+      }
+
       return this.addPending(key);
     }
 
     this.emit(key, undefined, error);
-
     return Promise.reject(error);
   }
 }

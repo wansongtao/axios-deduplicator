@@ -28,6 +28,12 @@ export default class AxiosDeduplicator {
     if (config.repeatWindowMs) {
       this.options.repeatWindowMs = config.repeatWindowMs;
     }
+    if (config.started) {
+      this.options.started = config.started;
+    }
+    if (config.completed) {
+      this.options.completed = config.completed;
+    }
   }
 
   static generateRequestKey(config: AxiosRequestConfig): string {
@@ -110,6 +116,8 @@ export default class AxiosDeduplicator {
 
       const callback = (data?: AxiosResponse, error?: AxiosError) => {
         timer && clearTimeout(timer);
+        this.options.completed &&
+          this.options.completed(key, data ? data.config : error?.config!);
         data ? resolve(data) : reject(error);
       };
 
@@ -128,6 +136,8 @@ export default class AxiosDeduplicator {
 
     const key = this.options.generateRequestKey(config);
     if (this.histories.has(key)) {
+      this.options.started && this.options.started(key, config);
+
       return Promise.reject({
         code: AxiosDeduplicator.CODE,
         message: 'Request repeated',
@@ -175,6 +185,7 @@ export default class AxiosDeduplicator {
         history.data &&
         Date.now() - history.lastRequestTime < this.options.repeatWindowMs
       ) {
+        this.options.completed && this.options.completed(key, error.config!);
         return Promise.resolve(history.data);
       }
 

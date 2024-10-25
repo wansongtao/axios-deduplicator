@@ -12,6 +12,8 @@ export interface IOptions<
   generateRequestKey: (config: T) => string;
   isAllowRepeat?: (config: T) => boolean;
   isDeleteCached?: (error?: U, res?: V) => boolean;
+  started?: (key: string, config: T) => void;
+  completed?: (key: string, config: T) => void;
 }
 
 export interface ICachedResponse {

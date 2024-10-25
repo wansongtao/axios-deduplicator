@@ -94,7 +94,13 @@ describe('Test the custom behavior of the plugin', () => {
       },
       isAllowRepeat: (config) => config.headers?.allowRepeat,
       isDeleteCached: (err, res) => {
-        return res?.data.id === 3 || err?.response?.status === 404;
+        return res?.data.id === 3;
+      },
+      started: (key, config) => {
+        console.log(`Request started: ${key}`, config);
+      },
+      completed: (key, config) => {
+        console.log(`Request completed: ${key}`, config);
       }
     });
     instance.interceptors.request.use(axiosDeduplicator.requestInterceptor);

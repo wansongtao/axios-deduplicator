@@ -25,6 +25,9 @@ export default class AxiosDeduplicator {
     if (config.generateRequestKey) {
       this.options.generateRequestKey = config.generateRequestKey;
     }
+    if (config.repeatWindowMs) {
+      this.options.repeatWindowMs = config.repeatWindowMs;
+    }
   }
 
   static generateRequestKey(config: AxiosRequestConfig): string {

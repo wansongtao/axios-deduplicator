@@ -11,7 +11,7 @@ export interface IOptions<
   repeatWindowMs: number;
   generateRequestKey: (config: T) => string;
   isAllowRepeat?: (config: T) => boolean;
-  isCache?: (error?: U, res?: V) => boolean;
+  isDeleteCached?: (error?: U, res?: V) => boolean;
 }
 
 export interface ICachedResponse {

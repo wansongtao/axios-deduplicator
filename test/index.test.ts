@@ -93,7 +93,7 @@ describe('Test the custom behavior of the plugin', () => {
         return config.url!;
       },
       isAllowRepeat: (config) => config.headers?.allowRepeat,
-      isCache: (err, res) => {
+      isDeleteCached: (err, res) => {
         return res?.data.id === 3 || err?.response?.status === 404;
       }
     });

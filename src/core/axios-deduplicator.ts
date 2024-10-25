@@ -20,7 +20,7 @@ export default class AxiosDeduplicator {
   constructor(config: Partial<IOptions> = {}) {
     this.options.timeout = config.timeout;
     this.options.isAllowRepeat = config.isAllowRepeat;
-    this.options.isCache = config.isCache;
+    this.options.isDeleteCached = config.isDeleteCached;
 
     if (config.generateRequestKey) {
       this.options.generateRequestKey = config.generateRequestKey;
@@ -142,8 +142,8 @@ export default class AxiosDeduplicator {
   responseInterceptorFulfilled(response: AxiosResponse) {
     const key = this.options.generateRequestKey(response.config);
     if (
-      this.options.isCache &&
-      this.options.isCache(undefined, response)
+      this.options.isDeleteCached &&
+      this.options.isDeleteCached(undefined, response)
     ) {
       this.remove(key);
       return response;
@@ -161,8 +161,8 @@ export default class AxiosDeduplicator {
   responseInterceptorRejected(error: AxiosError) {
     const key = this.options.generateRequestKey(error.config!);
     if (
-      this.options.isCache &&
-      this.options.isCache(error)
+      this.options.isDeleteCached &&
+      this.options.isDeleteCached(error)
     ) {
       this.remove(key);
       return Promise.reject(error);

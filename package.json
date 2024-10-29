@@ -1,17 +1,26 @@
 {
   "name": "axios-deduplicator",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "axios deduplicator plugin (axios 请求去重插件)",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "keywords": [
+    "axios",
+    "deduplicator",
+    "请求去重"
+  ],
+  "author": "wansongtao",
+  "license": "MIT",
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup",
     "test": "vitest --ui",
     "test:coverage": "vitest --coverage"
   },
-  "keywords": [],
-  "author": "wansongtao",
-  "license": "ISC",
   "devDependencies": {
     "@types/node": "^22.4.0",
     "@typescript-eslint/eslint-plugin": "^5.13.0",
@@ -25,5 +34,13 @@
     "tsup": "^8.2.4",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wansongtao/axios-deduplicator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wansongtao/axios-deduplicator/issues"
+  },
+  "homepage": "https://github.com/wansongtao/axios-deduplicator#readme"
 }

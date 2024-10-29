@@ -2,6 +2,8 @@ import AxiosDeduplicator from './core/axios-deduplicator';
 
 import type { IOptions } from './types';
 
+export { AxiosDeduplicator };
+
 export default function createAxiosDeduplicatorInstance(
   options: Partial<IOptions> = {}
 ) {

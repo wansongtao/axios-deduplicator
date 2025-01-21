@@ -135,7 +135,12 @@ export default class AxiosDeduplicator {
     }
 
     const key = this.options.generateRequestKey(config);
-    if (this.histories.has(key)) {
+    const history = this.histories.get(key);
+    if (
+      history &&
+      (!history.data ||
+        Date.now() - history.lastRequestTime < this.options.repeatWindowMs)
+    ) {
       this.options.started && this.options.started(key, config);
 
       return Promise.reject({
@@ -156,6 +161,7 @@ export default class AxiosDeduplicator {
       this.options.isDeleteCached(undefined, response)
     ) {
       this.remove(key);
+      this.histories.delete(key);
       return response;
     }
 
@@ -170,21 +176,15 @@ export default class AxiosDeduplicator {
 
   responseInterceptorRejected(error: AxiosError) {
     const key = this.options.generateRequestKey(error.config!);
-    if (
-      this.options.isDeleteCached &&
-      this.options.isDeleteCached(error)
-    ) {
+    if (this.options.isDeleteCached && this.options.isDeleteCached(error)) {
       this.remove(key);
+      this.histories.delete(key);
       return Promise.reject(error);
     }
 
     if (error.code === AxiosDeduplicator.CODE) {
       const history = this.histories.get(key);
-      if (
-        history &&
-        history.data &&
-        Date.now() - history.lastRequestTime < this.options.repeatWindowMs
-      ) {
+      if (history && history.data) {
         this.options.completed && this.options.completed(key, error.config!);
         return Promise.resolve(history.data);
       }

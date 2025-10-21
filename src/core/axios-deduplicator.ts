@@ -1,4 +1,4 @@
-import { getDataType } from '../utils';
+import { deepClone, getDataType } from '../utils';
 
 import type {
   AxiosError,
@@ -10,24 +10,38 @@ import type { ICallback, IOptions, ICachedResponse } from '../types';
 
 export default class AxiosDeduplicator {
   static CODE = 'ERR_REPEATED';
-  histories: Map<string, ICachedResponse> = new Map();
-  pendingQueue: Map<string, ICallback[]> = new Map();
+  history: Map<string, ICachedResponse> = new Map();
+  queue: Map<string, ICallback[]> = new Map();
   options: IOptions = {
     repeatWindowMs: 0,
     generateRequestKey: AxiosDeduplicator.generateRequestKey
   };
 
   constructor(config: Partial<IOptions> = {}) {
-    this.options.timeout = config.timeout;
-    this.options.isAllowRepeat = config.isAllowRepeat;
-    this.options.isDeleteCached = config.isDeleteCached;
-
     if (config.generateRequestKey) {
       this.options.generateRequestKey = config.generateRequestKey;
     }
     if (config.repeatWindowMs) {
       this.options.repeatWindowMs = config.repeatWindowMs;
     }
+    this.options.timeout = config.timeout;
+    if (config.skip) {
+      this.options.skip = config.skip;
+    } else if (config.isAllowRepeat || config.isDeleteCached) {
+      this.options.skip = (req, res, err) => {
+        if (req && config.isAllowRepeat) {
+          return config.isAllowRepeat(req);
+        }
+
+        if ((res || err) && config.isDeleteCached) {
+          return config.isDeleteCached!(err, res);
+        }
+
+        return false;
+      };
+    }
+
+    // todo: 未来要移除掉的 api
     if (config.started) {
       this.options.started = config.started;
     }
@@ -67,33 +81,25 @@ export default class AxiosDeduplicator {
     return key;
   }
 
-  clearExpiredHistories() {
+  clearExpiredHistory() {
     const now = Date.now();
-    for (const [key, { lastRequestTime }] of this.histories) {
+    for (const [key, { lastRequestTime }] of this.history) {
       if (now - lastRequestTime > this.options.repeatWindowMs!) {
-        this.histories.delete(key);
+        this.history.delete(key);
       }
     }
   }
 
-  private on(key: string, callback: ICallback) {
-    if (!this.pendingQueue.has(key)) {
-      this.pendingQueue.set(key, []);
-    }
-
-    this.pendingQueue.get(key)!.push(callback);
-  }
-
   private remove(key: string) {
-    this.pendingQueue.delete(key);
-    this.clearExpiredHistories();
+    this.queue.delete(key);
+    this.clearExpiredHistory();
   }
 
   private emit(key: string, data: AxiosResponse): void;
   private emit(key: string, data: undefined, error: AxiosError): void;
   private emit(key: string, data?: AxiosResponse, error?: AxiosError): void {
-    if (this.pendingQueue.has(key)) {
-      for (const callback of this.pendingQueue.get(key)!) {
+    if (this.queue.has(key)) {
+      for (const callback of this.queue.get(key)!) {
         callback(data, error);
       }
     }
@@ -101,7 +107,7 @@ export default class AxiosDeduplicator {
     this.remove(key);
   }
 
-  private addPending(key: string) {
+  private enqueue(key: string) {
     return new Promise<AxiosResponse>((resolve, reject) => {
       const delay = this.options.timeout;
       let timer: NodeJS.Timeout | undefined;
@@ -118,24 +124,24 @@ export default class AxiosDeduplicator {
         timer && clearTimeout(timer);
         this.options.completed &&
           this.options.completed(key, data ? data.config : error?.config!);
-        data ? resolve(data) : reject(error);
+        data ? resolve(deepClone(data)) : reject(deepClone(error));
       };
 
-      this.on(key, callback);
+      if (!this.queue.has(key)) {
+        this.queue.set(key, []);
+      }
+      this.queue.get(key)!.push(callback);
     });
   }
 
   requestInterceptor(config: InternalAxiosRequestConfig) {
-    const isAllowRepeat = this.options.isAllowRepeat
-      ? this.options.isAllowRepeat(config)
-      : false;
-
-    if (isAllowRepeat) {
+    const isSkip = this.options.skip ? this.options.skip(config) : false;
+    if (isSkip) {
       return config;
     }
 
     const key = this.options.generateRequestKey(config);
-    const history = this.histories.get(key);
+    const history = this.history.get(key);
     if (
       history &&
       (!history.data ||
@@ -150,24 +156,25 @@ export default class AxiosDeduplicator {
       });
     }
 
-    this.histories.set(key, { lastRequestTime: Date.now() });
+    this.history.set(key, { lastRequestTime: Date.now() });
     return config;
   }
 
   responseInterceptorFulfilled(response: AxiosResponse) {
     const key = this.options.generateRequestKey(response.config);
-    if (
-      this.options.isDeleteCached &&
-      this.options.isDeleteCached(undefined, response)
-    ) {
+    if (this.options.skip && this.options.skip(undefined, response)) {
       this.remove(key);
-      this.histories.delete(key);
+      this.history.delete(key);
       return response;
     }
 
-    const history = this.histories.get(key);
-    if (history) {
-      history.data = response;
+    const history = this.history.get(key);
+    if (this.options.repeatWindowMs && history) {
+      history.data = deepClone(response);
+
+      setTimeout(() => {
+        this.clearExpiredHistory();
+      }, this.options.repeatWindowMs + 1000);
     }
 
     this.emit(key, response);
@@ -176,20 +183,22 @@ export default class AxiosDeduplicator {
 
   responseInterceptorRejected(error: AxiosError) {
     const key = this.options.generateRequestKey(error.config!);
-    if (this.options.isDeleteCached && this.options.isDeleteCached(error)) {
+    if (this.options.skip && this.options.skip(undefined, undefined, error)) {
       this.remove(key);
-      this.histories.delete(key);
+      this.history.delete(key);
       return Promise.reject(error);
     }
 
     if (error.code === AxiosDeduplicator.CODE) {
-      const history = this.histories.get(key);
+      const history = this.history.get(key);
+      // 距离上次请求时间间隔不小于 repeatWindowMs，从缓存中取出请求结果
       if (history && history.data) {
         this.options.completed && this.options.completed(key, error.config!);
-        return Promise.resolve(history.data);
+        return Promise.resolve(deepClone(history.data));
       }
 
-      return this.addPending(key);
+      // 上次请求还未完成，加入队列，等待结果
+      return this.enqueue(key);
     }
 
     this.emit(key, undefined, error);

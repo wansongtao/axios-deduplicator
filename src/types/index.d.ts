@@ -1,6 +1,6 @@
 import type { AxiosError, AxiosResponse, AxiosRequestConfig } from 'axios';
 
-export type ICallback = (data?: AxiosResponse, error?: AxiosError) => void;
+export type ICallback<T = AxiosResponse, U = AxiosError> = (data?: T, error?: U) => void;
 
 export interface IOptions<
   T extends AxiosRequestConfig = AxiosRequestConfig,
@@ -29,7 +29,7 @@ export interface IOptions<
   completed?: (key: string, config: T) => void;
 }
 
-export interface ICachedResponse {
-  data?: AxiosResponse;
+export interface ICachedResponse<T> {
+  data?: T;
   lastRequestTime: number;
 }

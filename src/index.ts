@@ -2,7 +2,11 @@ import { CacheQueue } from './core/axios-deduplicator';
 import { deepClone, generateKey } from './utils';
 
 import type { IOptions } from './types';
-import type { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import type {
+  AxiosError,
+  AxiosResponse,
+  InternalAxiosRequestConfig
+} from 'axios';
 
 export { CacheQueue, deepClone, generateKey };
 
@@ -29,7 +33,10 @@ export default function createAxiosDeduplicatorInstance(
     };
   }
 
-  const instance = new CacheQueue(options.timeout, options.repeatWindowMs);
+  const instance = new CacheQueue<AxiosResponse, AxiosError>(
+    options.timeout,
+    options.repeatWindowMs
+  );
   const REPEATED_CODE = 'ERR_REPEATED';
 
   return {

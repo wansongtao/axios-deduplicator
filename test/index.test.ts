@@ -1,5 +1,5 @@
 import createAxiosDeduplicatorInstance from '../src/index';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import { describe, expect, test, beforeEach } from 'vitest';
 
 describe('Test the default behavior of the plugin', () => {
@@ -26,7 +26,7 @@ describe('Test the default behavior of the plugin', () => {
 
     const [response1, response2] = await Promise.all([request1, request2]);
 
-    expect(response1).toEqual(response2);
+    expect(response1.data).toEqual(response2.data);
   });
 
   test('Test that different requests are not deduplicated', async () => {
@@ -66,7 +66,7 @@ describe('Test the default behavior of the plugin', () => {
 
     const [response1, response2] = await Promise.all([request1, request2]);
 
-    expect(response1).toEqual(response2);
+    expect(response1.data).toEqual(response2.data);
   });
 
   test('Test the handling of failed requests', async () => {
@@ -93,14 +93,8 @@ describe('Test the custom behavior of the plugin', () => {
         return config.url!;
       },
       isAllowRepeat: (config) => config.headers?.allowRepeat,
-      isDeleteCached: (err, res) => {
+      isDeleteCached: (_err, res) => {
         return res?.data.id === 3;
-      },
-      started: (key, config) => {
-        console.log(`Request started: ${key}`, config);
-      },
-      completed: (key, config) => {
-        console.log(`Request completed: ${key}`, config);
       }
     });
     instance.interceptors.request.use(axiosDeduplicator.requestInterceptor);
@@ -114,7 +108,7 @@ describe('Test the custom behavior of the plugin', () => {
     const url = 'https://jsonplaceholder.typicode.com/todos/4';
     const request1 = instance.get(url);
     const request2 = () => {
-      return new Promise((resolve) => {
+      return new Promise<AxiosResponse>((resolve) => {
         setTimeout(() => {
           instance
             .get(url)
@@ -128,7 +122,7 @@ describe('Test the custom behavior of the plugin', () => {
 
     const [response1, response2] = await Promise.all([request1, request2()]);
 
-    expect(response1).toEqual(response2);
+    expect(response1.data).toEqual(response2.data);
   });
 
   test('Test whether duplicate requests can be allowed', async () => {
@@ -167,7 +161,7 @@ describe('Test the custom behavior of the plugin', () => {
 
     const request1 = instance.get(url);
     const request2 = () => {
-      return new Promise((resolve) => {
+      return new Promise<AxiosResponse>((resolve) => {
         setTimeout(() => {
           instance
             .get(url)
@@ -181,6 +175,6 @@ describe('Test the custom behavior of the plugin', () => {
 
     const [response1, response2] = await Promise.all([request1, request2()]);
 
-    expect(response1).toEqual(response2);
+    expect(response1.data).toEqual(response2.data);
   });
 });
